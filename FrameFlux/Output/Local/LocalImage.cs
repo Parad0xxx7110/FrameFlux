@@ -7,7 +7,7 @@ namespace FrameFlux.Output.Local
 {
 
 
-    // Only used for debugging purposes and dataset creation
+    // Only used for debugging purposes and dataset creation at low fps rates.
 
     // TODO : Add support for other formats (e.g. PNG, JPEG), Add imageSharp for better performance and flexibility
     internal class LocalImage

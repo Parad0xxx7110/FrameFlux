@@ -1,4 +1,5 @@
-﻿using Vortice.Direct3D11;
+﻿using System.Runtime.Intrinsics.X86;
+using Vortice.Direct3D11;
 using Vortice.DXGI;
 
 namespace FrameFlux.Core
@@ -88,6 +89,126 @@ namespace FrameFlux.Core
             finally
             {
                 context.Unmap(_stagingTexture, 0);
+            }
+        }
+
+        public unsafe byte[]? FastGetFrameBytes()
+        {
+            if (_stagingTexture == null)
+            {
+                var desc = _gpuTexture.Description;
+                desc.Usage = ResourceUsage.Staging;
+                desc.CPUAccessFlags = CpuAccessFlags.Read;
+                desc.BindFlags = BindFlags.None;
+                desc.MiscFlags = ResourceOptionFlags.None;
+
+                _stagingTexture = _device.CreateTexture2D(desc);
+            }
+
+            var context = _device.ImmediateContext;
+            context.CopyResource(_stagingTexture, _gpuTexture);
+
+            var dataBox = context.Map(_stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+
+            try
+            {
+                int width = Width;
+                int height = Height;
+
+                if (width <= 0 || height <= 0)
+                {
+                    throw new InvalidOperationException("Invalid texture dimensions.");
+                }
+
+                int bytesPerPixel = Format switch
+                {
+                    Vortice.DXGI.Format.B8G8R8A8_UNorm => 4,       // BGRA 8 bits par canal
+                    Vortice.DXGI.Format.R8G8B8A8_UNorm => 4,       // RGBA 8 bits par canal
+                    Vortice.DXGI.Format.B5G6R5_UNorm => 2,         // 16 bits (5-6-5 bits)
+                    Vortice.DXGI.Format.B5G5R5A1_UNorm => 2,       // 16 bits (5-5-5-1 bits)
+                    Vortice.DXGI.Format.R16G16B16A16_Float => 8,   // 64 bits float (16 bits x4)
+                    Vortice.DXGI.Format.R32G32B32A32_Float => 16,  // 128 bits float (32 bits x4)
+                    Vortice.DXGI.Format.R8_UNorm => 1,              // 8 bits (grayscale ou alpha)
+                    _ => throw new NotSupportedException($"Unsupported: {Format}")
+                };
+
+                int rowPitch = (int)dataBox.RowPitch;
+                int requiredSize = width * height * bytesPerPixel;
+
+                if (_pixelBuffer == null || _pixelBuffer.Length != requiredSize)
+                {
+                    _pixelBuffer = new byte[requiredSize];
+                }
+
+                byte* srcPtr = (byte*)dataBox.DataPointer;
+                fixed (byte* dstPtr = _pixelBuffer)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        byte* srcLine = srcPtr + y * rowPitch;
+                        byte* dstLine = dstPtr + y * width * bytesPerPixel;
+                        int lineBytes = width * bytesPerPixel;
+
+                        if (Avx2.IsSupported)
+                        {
+                            Avx2Copy(srcLine, dstLine, lineBytes);
+                        }
+                        else if (Sse2.IsSupported)
+                        {
+                            Sse2Copy(srcLine, dstLine, lineBytes);
+                        }
+                        else
+                        {
+                            DefaultCopy(srcLine, dstLine, lineBytes);
+                        }
+                    }
+                }
+
+                return _pixelBuffer;
+            }
+            finally
+            {
+                context.Unmap(_stagingTexture, 0);
+            }
+        }
+
+        private unsafe void Avx2Copy(byte* src, byte* dst, int length)
+        {
+            int offset = 0;
+            int vectorSize = 32; // 256 bits -> 32 bytes
+            for (; offset <= length - vectorSize; offset += vectorSize)
+            {
+                var vector = Avx.LoadVector256(src + offset);
+                Avx.Store(dst + offset, vector);
+            }
+            // Remaining bytes
+            for (; offset < length; offset++)
+            {
+                dst[offset] = src[offset];
+            }
+        }
+
+        private unsafe void Sse2Copy(byte* src, byte* dst, int length)
+        {
+            int offset = 0;
+            int vectorSize = 16; // 128 bits -> 16 bytes
+            for (; offset <= length - vectorSize; offset += vectorSize)
+            {
+                var vector = Sse2.LoadVector128(src + offset);
+                Sse2.Store(dst + offset, vector);
+            }
+
+            for (; offset < length; offset++)
+            {
+                dst[offset] = src[offset];
+            }
+        }
+
+        private unsafe void DefaultCopy(byte* src, byte* dst, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                dst[i] = src[i];
             }
         }
 

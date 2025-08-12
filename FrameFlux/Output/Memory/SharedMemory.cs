@@ -4,6 +4,10 @@ using System.Threading;
 
 public class SharedMemory : IDisposable
 {
+
+    // This class provides a shared memory buffer for inter-process communication,
+    // inference is done in another process, and this class is used to write frames to the shared memory.
+
     private readonly MemoryMappedFile _mmf;
     private readonly MemoryMappedViewAccessor _accessor;
     private readonly Semaphore _semaphore;
@@ -45,7 +49,7 @@ public class SharedMemory : IDisposable
         catch (SemaphoreFullException)
         {
            Console.WriteLine("Semaphore already full, frame not processed in time.");
-            _frameDroppedCount++;
+            _frameDroppedCount++; // Higly unlikely to happen, but just in case...
         }
     }
 
