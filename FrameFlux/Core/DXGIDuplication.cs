@@ -11,6 +11,7 @@ namespace FrameFlux.Core
 
     // this class is subject to a lot of changes for testing and performance tuning
     // the api should be stable but the frame acquisition logic may change frequently
+    //
 
 
     public sealed class DXGIDuplication : IAsyncDisposable
