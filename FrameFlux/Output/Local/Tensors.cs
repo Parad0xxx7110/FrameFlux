@@ -1,4 +1,4 @@
-﻿namespace FrameFlux.Converters
+﻿namespace FrameFlux.Output.Local
 {
     internal class Tensors
     {

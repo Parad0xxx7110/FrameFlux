@@ -59,11 +59,17 @@ namespace FrameFlux.Core
             {
                 int width = Width;
                 int height = Height;
+
                 int bytesPerPixel = Format switch
                 {
-                    Vortice.DXGI.Format.B8G8R8A8_UNorm => 4,
-                    Vortice.DXGI.Format.R8G8B8A8_UNorm => 4,
-                    _ => 4
+                    Vortice.DXGI.Format.B8G8R8A8_UNorm => 4,      
+                    Vortice.DXGI.Format.R8G8B8A8_UNorm => 4,      
+                    Vortice.DXGI.Format.B5G6R5_UNorm => 2,       
+                    Vortice.DXGI.Format.B5G5R5A1_UNorm => 2,       
+                    Vortice.DXGI.Format.R16G16B16A16_Float => 8,  
+                    Vortice.DXGI.Format.R32G32B32A32_Float => 16,  
+                    Vortice.DXGI.Format.R8_UNorm => 1,              
+                    _ => throw new NotSupportedException($"Unsupported: {Format}")
                 };
 
                 int rowPitch = (int)dataBox.RowPitch; // Real size of a row in bytes to account for padding
@@ -122,13 +128,13 @@ namespace FrameFlux.Core
 
                 int bytesPerPixel = Format switch
                 {
-                    Vortice.DXGI.Format.B8G8R8A8_UNorm => 4,       // BGRA 8 bits par canal
-                    Vortice.DXGI.Format.R8G8B8A8_UNorm => 4,       // RGBA 8 bits par canal
+                    Vortice.DXGI.Format.B8G8R8A8_UNorm => 4,       // BGRA 8 bits
+                    Vortice.DXGI.Format.R8G8B8A8_UNorm => 4,       // RGBA 8 bits
                     Vortice.DXGI.Format.B5G6R5_UNorm => 2,         // 16 bits (5-6-5 bits)
                     Vortice.DXGI.Format.B5G5R5A1_UNorm => 2,       // 16 bits (5-5-5-1 bits)
                     Vortice.DXGI.Format.R16G16B16A16_Float => 8,   // 64 bits float (16 bits x4)
                     Vortice.DXGI.Format.R32G32B32A32_Float => 16,  // 128 bits float (32 bits x4)
-                    Vortice.DXGI.Format.R8_UNorm => 1,              // 8 bits (grayscale ou alpha)
+                    Vortice.DXGI.Format.R8_UNorm => 1,             // 8 bits (grayscale or alpha)
                     _ => throw new NotSupportedException($"Unsupported: {Format}")
                 };
 
