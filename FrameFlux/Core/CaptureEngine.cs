@@ -176,14 +176,14 @@ namespace FrameFlux.Core
 
 
         // Acquire the next frame from the duplication interface
-        private Frame? AcquireFrame(int targetFps)
+        private Frame? AcquireFrame(int maxFps)
         {
             if (_duplication is null)
                 throw new InvalidOperationException("Duplication not initialized.");
 
-            int timeoutMs = targetFps == 0
+            int timeoutMs = maxFps == 0
                 ? 0
-                : Math.Max(0, (int)Math.Round(1000.0 / targetFps) - 1);
+                : Math.Max(0, (int)Math.Round(1000.0 / maxFps) - 1);
 
             var hr = _duplication.AcquireNextFrame((uint)timeoutMs, out var info, out var res);
 
