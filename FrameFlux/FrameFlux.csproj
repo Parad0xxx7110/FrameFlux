@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Folder Include="CLI\" />
+    <Folder Include="Helpers\" />
   </ItemGroup>
 
 </Project>

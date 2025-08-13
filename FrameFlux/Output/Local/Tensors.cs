@@ -2,22 +2,40 @@
 {
     internal class Tensors
     {
-        static float[] ConvertToTensorFormat(byte[] pixels, int width, int height)
-        {
-            // pixels -> RGBA (4 bytes), need normalized RGBA float 0..1
-            int pixelCount = width * height;
-            float[] tensorData = new float[3 * pixelCount]; // 3 channels, ignore alpha channel
+        private float[]? _tensorBuffer;
 
-            for (int i = 0; i < pixelCount; i++)
+
+
+        // Convert byte array pixels to a NCHW tensor format ready for ONNX inference. 
+
+        public unsafe float[] ToTensors(byte[] pixels, int width, int height)
+        {
+            int pixelCount = width * height;
+
+            // Now reuse the buffer if it exists and has the correct size
+            if (_tensorBuffer == null || _tensorBuffer.Length != 3 * pixelCount)
+                _tensorBuffer = new float[3 * pixelCount];
+
+            fixed (byte* pPixels = pixels)
+            fixed (float* pTensor = _tensorBuffer)
             {
-                int baseIdx = i * 4;
-                tensorData[i] = pixels[baseIdx + 0] / 255f;         // R
-                tensorData[i + pixelCount] = pixels[baseIdx + 1] / 255f; // G
-                tensorData[i + 2 * pixelCount] = pixels[baseIdx + 2] / 255f; // B
+                byte* src = pPixels;
+                float* dstR = pTensor;
+                float* dstG = pTensor + pixelCount;
+                float* dstB = pTensor + 2 * pixelCount;
+
+                for (int i = 0; i < pixelCount; i++)
+                {
+                    *dstR++ = *src++ / 255f; // R
+                    *dstG++ = *src++ / 255f; // G
+                    *dstB++ = *src++ / 255f; // B
+                    src++;                    // Alphe layer, uneeded for RGB so we skip it 
+                }
             }
 
-            return tensorData;
+            return _tensorBuffer;
         }
-
     }
+
+
 }

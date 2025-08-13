@@ -5,34 +5,47 @@ class Program
 {
     static async Task Main()
     {
-
-        var capturer = new DXGIDuplication(adapterIndex: 0, outputIndex: 0, targetFps: 60);
-
+        await using var capturer = new CaptureEngine(adapterIndex: 0, outputIndex: 0, maxFps: 60);
         var cts = new CancellationTokenSource();
 
-
-        var captureTask = capturer.StartCaptureAsync(cts.Token);
-
         
+        var captureThread = new Thread(() =>
+        {
+            try
+            {
+              
+                capturer.StartCaptureAsync(cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("Capture annulée.");
+            }
+        })
+        {
+            IsBackground = true
+        };
+        captureThread.Start();
+
+       
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(120));
             cts.Cancel();
         });
 
-        try
+        Console.WriteLine("Appuie sur [Esc] pour arrêter la capture...");
+
+        
+        while (!cts.IsCancellationRequested)
         {
-            await captureTask;
+            if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Escape)
+                cts.Cancel();
+            await Task.Delay(50);
+
         }
-        catch (OperationCanceledException)
-        {
-            // Ok, we expected this
-            AnsiConsole.MarkupLine("[red]Capture canceled by user.[/]");
-        }
-        finally
-        {
-            await capturer.DisposeAsync();
-            AnsiConsole.MarkupLine("[yellow]Capture over.[/]");
-        }
+
+        captureThread.Join();
+        Console.WriteLine("Capture terminée.");
     }
+
 }

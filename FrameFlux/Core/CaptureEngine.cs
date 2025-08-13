@@ -14,11 +14,11 @@ namespace FrameFlux.Core
     //
 
 
-    public sealed class DXGIDuplication : IAsyncDisposable
+    public sealed class CaptureEngine : IAsyncDisposable
     {
         private readonly uint _adapterIndex;
         private readonly uint _outputIndex;
-        private readonly TimeSpan? _frameDelay;
+        private readonly TimeSpan? _maxFrameInterval;
 
         private IDXGIOutputDuplication? _duplication;
         private ID3D11Device? _device;
@@ -26,11 +26,11 @@ namespace FrameFlux.Core
 
 
         // Assuming we use the primary output by default if nothing is specified
-        public DXGIDuplication(int adapterIndex = 0, int outputIndex = 0, int targetFps = 0)
+        public CaptureEngine(uint adapterIndex = 0, uint outputIndex = 0, int maxFps = 0)
         {
-            _adapterIndex = (uint)adapterIndex;
-            _outputIndex = (uint)outputIndex;
-            _frameDelay = targetFps > 0 ? TimeSpan.FromSeconds(1.0 / targetFps) : null;
+            _adapterIndex = adapterIndex;
+            _outputIndex = outputIndex;
+            _maxFrameInterval = maxFps > 0 ? TimeSpan.FromSeconds(1.0 / maxFps) : null;
         }
 
         public async Task StartCaptureAsync(CancellationToken token = default)
@@ -39,8 +39,8 @@ namespace FrameFlux.Core
             if (_duplication is null)
                 throw new InvalidOperationException("Duplication not initialized.");
 
-            int targetFps = _frameDelay.HasValue ? (int)Math.Round(1.0 / _frameDelay.Value.TotalSeconds) : 0;
-            long ticksPerFrame = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
+            int maxFps = _maxFrameInterval.HasValue ? (int)Math.Round(1.0 / _maxFrameInterval.Value.TotalSeconds) : 0;
+            long ticksPerFrame = maxFps > 0 ? Stopwatch.Frequency / maxFps : 0;
 
             var swFps = Stopwatch.StartNew();
             long nextFrameTicks = Stopwatch.GetTimestamp();
@@ -54,7 +54,7 @@ namespace FrameFlux.Core
                 .Border(TableBorder.Rounded)
                 .AddColumn("[teal]Metric[/]")
                 .AddColumn("[teal]Value[/]")
-                .AddRow("Target FPS", targetFps > 0 ? targetFps.ToString() : "Unlimited")
+                .AddRow("Max FPS", maxFps > 0 ? maxFps.ToString() : "Unlimited")
                 .AddRow("Current FPS", "0")
                 .AddRow("Dropped Frames", "0")
                 .AddRow("Status", "Running");
@@ -69,7 +69,7 @@ namespace FrameFlux.Core
                     {
                         try
                         {
-                            using var frame = AcquireFrame(targetFps);
+                            using var frame = AcquireFrame(maxFps);
                             bool hasNewContent = frame != null && frame.Info.LastPresentTime != lastPts;
 
                             if (hasNewContent)
@@ -77,14 +77,14 @@ namespace FrameFlux.Core
                                 lastPts = frame!.Info.LastPresentTime;
                                 frames++;
                             }
-                            else if (targetFps > 0)
+                            else if (maxFps > 0)
                             {
                                 droppedFrames++;
                             }
 
                             retryCount = 0;
 
-                            if (targetFps > 0)
+                            if (maxFps > 0)
                             {
                                 nextFrameTicks += ticksPerFrame;
                                 long now = Stopwatch.GetTimestamp();
