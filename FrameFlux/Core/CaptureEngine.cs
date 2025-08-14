@@ -1,4 +1,5 @@
-﻿using Spectre.Console;
+﻿using FrameFlux.Output.Memory;
+using Spectre.Console;
 using System.Diagnostics;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -33,113 +34,110 @@ namespace FrameFlux.Core
             _maxFrameInterval = maxFps > 0 ? TimeSpan.FromSeconds(1.0 / maxFps) : null;
         }
 
-        public async Task StartCaptureAsync(CancellationToken token = default)
+        
+        public async IAsyncEnumerable<Frame> StartCaptureAsync(
+    SharedMemory? sharedMem = null,
+    [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
         {
             InitDesktopDuplication();
             if (_duplication is null)
                 throw new InvalidOperationException("Duplication not initialized.");
 
-            int maxFps = _maxFrameInterval.HasValue ? (int)Math.Round(1.0 / _maxFrameInterval.Value.TotalSeconds) : 0;
-            long ticksPerFrame = maxFps > 0 ? Stopwatch.Frequency / maxFps : 0;
+            int maxFps = _maxFrameInterval.HasValue
+                ? (int)Math.Round(1.0 / _maxFrameInterval.Value.TotalSeconds)
+                : 0;
 
-            var swFps = Stopwatch.StartNew();
+            long ticksPerFrame = maxFps > 0 ? Stopwatch.Frequency / maxFps : 0;
             long nextFrameTicks = Stopwatch.GetTimestamp();
+
+           
             int frames = 0;
             int droppedFrames = 0;
-            long lastPts = 0;
-            int retryCount = 0;
-            const int maxRetries = 5;
 
-            var table = new Table()
-                .Border(TableBorder.Rounded)
-                .AddColumn("[teal]Metric[/]")
-                .AddColumn("[teal]Value[/]")
-                .AddRow("Max FPS", maxFps > 0 ? maxFps.ToString() : "Unlimited")
-                .AddRow("Current FPS", "0")
-                .AddRow("Dropped Frames", "0")
-                .AddRow("Status", "Running");
+          
+            _ = Task.Run(async () =>
+            {
+                var table = new Table()
+                    .Border(TableBorder.Rounded)
+                    .AddColumn("[teal]Metric[/]")
+                    .AddColumn("[teal]Value[/]")
+                    .AddRow("Max FPS", maxFps > 0 ? maxFps.ToString() : "Unlimited")
+                    .AddRow("Current FPS", "0")
+                    .AddRow("Dropped Frames", "0")
+                    .AddRow("Status", "Running")
+                    .AddRow("Frames in buffer", sharedMem == null ? "N/A" : "0");
 
-            await AnsiConsole.Live(table)
-                .AutoClear(false)
-                .Overflow(VerticalOverflow.Ellipsis)
-                .Cropping(VerticalOverflowCropping.Top)
-                .StartAsync(async ctx =>
-                {
-                    while (!token.IsCancellationRequested)
+                await AnsiConsole.Live(table)
+                    .AutoClear(false)
+                    .StartAsync(async ctx =>
                     {
-                        try
+                        var sw = Stopwatch.StartNew();
+                        int lastFrames = 0, lastDropped = 0;
+
+                        while (!token.IsCancellationRequested)
                         {
-                            using var frame = AcquireFrame(maxFps);
-                            bool hasNewContent = frame != null && frame.Info.LastPresentTime != lastPts;
+                            await Task.Delay(1000, token);
 
-                            if (hasNewContent)
-                            {
-                                lastPts = frame!.Info.LastPresentTime;
-                                frames++;
-                            }
-                            else if (maxFps > 0)
-                            {
-                                droppedFrames++;
-                            }
+                            // Capture locale pour éviter les races
+                            int f = Volatile.Read(ref frames);
+                            int df = Volatile.Read(ref droppedFrames);
 
-                            retryCount = 0;
-
-                            if (maxFps > 0)
-                            {
-                                nextFrameTicks += ticksPerFrame;
-                                long now = Stopwatch.GetTimestamp();
-                                long waitTicks = nextFrameTicks - now;
-
-                                if (waitTicks > 0)
-                                {
-                                    int ms = (int)(waitTicks * 1000 / Stopwatch.Frequency);
-                                    if (ms > 1)
-                                        await Task.Delay(ms - 1, token);
-
-                                    while (Stopwatch.GetTimestamp() < nextFrameTicks)
-                                        Thread.SpinWait(5);
-                                }
-                                else
-                                {
-                                    nextFrameTicks = now;
-                                }
-                            }
-                            else
-                            {
-                                if (!hasNewContent)
-                                    Thread.SpinWait(5);
-                            }
-
-                            if (swFps.ElapsedMilliseconds >= 1000)
-                            {
-                                table.UpdateCell(1, 1, frames.ToString());
-                                table.UpdateCell(2, 1, droppedFrames.ToString());
-                                table.UpdateCell(3, 1, "Running");
-                                ctx.Refresh();
-                                frames = 0;
-                                droppedFrames = 0;
-                                swFps.Restart();
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            break;
-                        }
-                        catch (InvalidOperationException ex) when (retryCount < maxRetries)
-                        {
-                            retryCount++;
-                            table.UpdateCell(3, 1, $"Retry {retryCount}/{maxRetries}: {ex.Message}");
+                            table.UpdateCell(1, 1, f.ToString());
+                            table.UpdateCell(2, 1, df.ToString());
+                            table.UpdateCell(4, 1, sharedMem?.FrameCount.ToString() ?? "N/A");
                             ctx.Refresh();
-                            await Task.Delay(10 * retryCount, token);
+
+                            // Optionnel : remise à zéro pour FPS instantané
+                            Volatile.Write(ref frames, 0);
+                            Volatile.Write(ref droppedFrames, 0);
                         }
-                        catch (Exception ex)
-                        {
-                            table.UpdateCell(3, 1, $"Fatal: {ex.Message}");
-                            ctx.Refresh();
-                            break;
-                        }
+                    });
+            }, token);
+
+            await Task.Yield();
+
+            long lastPts = 0;
+            while (!token.IsCancellationRequested)
+            {
+                using var frame = AcquireFrame(maxFps);
+                bool hasNewContent = frame != null && frame.Info.LastPresentTime != lastPts;
+
+                if (hasNewContent)
+                {
+                    lastPts = frame!.Info.LastPresentTime;
+                    Interlocked.Increment(ref frames);
+                    yield return frame;
+                }
+                else if (maxFps > 0)
+                {
+                    Interlocked.Increment(ref droppedFrames);
+                }
+
+                if (maxFps > 0)
+                {
+                    nextFrameTicks += ticksPerFrame;
+                    long now = Stopwatch.GetTimestamp();
+                    long waitTicks = nextFrameTicks - now;
+
+                    if (waitTicks > 0)
+                    {
+                        int ms = (int)(waitTicks * 1000 / Stopwatch.Frequency);
+                        if (ms > 1)
+                            await Task.Delay(ms - 1, token);
+                        while (Stopwatch.GetTimestamp() < nextFrameTicks)
+                            Thread.SpinWait(5);
                     }
-                });
+                    else
+                    {
+                        nextFrameTicks = now;
+                    }
+                }
+                else
+                {
+                    if (!hasNewContent)
+                        Thread.SpinWait(5);
+                }
+            }
         }
 
 

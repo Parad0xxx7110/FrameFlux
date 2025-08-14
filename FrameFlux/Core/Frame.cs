@@ -1,12 +1,18 @@
-﻿using System.Runtime.Intrinsics.X86;
+﻿using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
 namespace FrameFlux.Core
 {
+
+    // I think i can't optimize this further... Thinking about implementing shader pre-processing
+    // instead of CPU for image resizing, normalizing, etc
+
+
     // This class represents a single frame captured from the desktop duplication API,
     // providing func to access pixel data and metadata about the frame.
-    internal sealed class Frame : IDisposable
+    public sealed class Frame : IDisposable
     {
         private readonly IDXGIResource _resource;
         private readonly IDXGIOutputDuplication _duplication;
@@ -98,6 +104,9 @@ namespace FrameFlux.Core
             }
         }
 
+
+
+        // SIMD optimized version of GetFrameBytes, mostly same logic but using SIMD intrinsics
         public unsafe byte[]? FastGetFrameBytes()
         {
             if (_stagingTexture == null)
@@ -155,16 +164,23 @@ namespace FrameFlux.Core
                         byte* dstLine = dstPtr + y * width * bytesPerPixel;
                         int lineBytes = width * bytesPerPixel;
 
+
+                        // TODO : Check for support before using the func
+                        // and refactor this
+
                         if (Avx2.IsSupported)
                         {
+                            Console.WriteLine("Using AVX2 for pixel copy");
                             Avx2Copy(srcLine, dstLine, lineBytes);
                         }
                         else if (Sse2.IsSupported)
                         {
+                            Console.WriteLine("Using SSE2 for pixel copy");
                             Sse2Copy(srcLine, dstLine, lineBytes);
                         }
                         else
                         {
+                            Console.WriteLine("Using default copy for pixel copy");
                             DefaultCopy(srcLine, dstLine, lineBytes);
                         }
                     }
@@ -184,8 +200,8 @@ namespace FrameFlux.Core
             int vectorSize = 32; // 256 bits -> 32 bytes
             for (; offset <= length - vectorSize; offset += vectorSize)
             {
-                var vector = Avx.LoadVector256(src + offset);
-                Avx.Store(dst + offset, vector);
+                var vector = Avx2.LoadVector256(src + offset);
+                Avx2.Store(dst + offset, vector);
             }
             // Remaining bytes
             for (; offset < length; offset++)

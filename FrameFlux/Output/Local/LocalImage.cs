@@ -5,13 +5,20 @@ using System.Runtime.InteropServices;
 
 namespace FrameFlux.Output.Local
 {
-
-
     // Only used for debugging purposes and dataset creation at low fps rates.
 
     // TODO : Add support for other formats (e.g. PNG, JPEG), Add imageSharp for better performance and flexibility
     internal class LocalImage
     {
+
+        static public void SaveFrameAsJpeg(Frame frame, string path) // Need quality parameter
+        {
+
+        }
+        static public void SaveFrameAsPng(Frame frame, string path)
+        {
+            
+        }
         static public void SaveFrameAsBmp(Frame frame, string path)
         {
             byte[] pixels = frame.GetFrameBytes() ?? throw new InvalidOperationException("Frame data missing");

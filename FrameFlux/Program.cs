@@ -1,32 +1,33 @@
 ﻿using FrameFlux.Core;
+using FrameFlux.Output.Memory;
 using Spectre.Console;
 
 class Program
 {
     static async Task Main()
     {
-        await using var capturer = new CaptureEngine(adapterIndex: 0, outputIndex: 0, maxFps: 60);
+        const int MAX_WIDTH = 1920;
+        const int MAX_HEIGHT = 1080;
+        const int BYTES_PER_PIXEL = 4;
+        const int BUFFER_SIZE = MAX_WIDTH * MAX_HEIGHT * BYTES_PER_PIXEL;
+
+        await using var capturer = new CaptureEngine(adapterIndex: 0, outputIndex: 0, maxFps: 0);
+        using var sharedMem = new SharedMemory("FrameBuffer", "FrameReady", BUFFER_SIZE);
+
         var cts = new CancellationTokenSource();
 
-        
-        var captureThread = new Thread(() =>
+        // Consomme les frames et les pousse dans la shared memory
+        var captureTask = Task.Run(async () =>
         {
-            try
+            await foreach (var frame in capturer.StartCaptureAsync(sharedMem, cts.Token))
             {
-              
-                capturer.StartCaptureAsync(cts.Token).GetAwaiter().GetResult();
+                var pixels = frame.FastGetFrameBytes();
+                if (pixels != null)
+                    sharedMem.WriteFrameData(pixels);
             }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine("Capture annulée.");
-            }
-        })
-        {
-            IsBackground = true
-        };
-        captureThread.Start();
+        });
 
-       
+        // Arrêt avec Esc ou après 120 s
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(120));
@@ -34,18 +35,14 @@ class Program
         });
 
         Console.WriteLine("Appuie sur [Esc] pour arrêter la capture...");
-
-        
         while (!cts.IsCancellationRequested)
         {
             if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Escape)
                 cts.Cancel();
             await Task.Delay(50);
-
         }
 
-        captureThread.Join();
-        Console.WriteLine("Capture terminée.");
+        await captureTask;
+        AnsiConsole.MarkupLine("[green]Capture terminée.[/]");
     }
-
 }
