@@ -22,19 +22,22 @@ namespace FrameFlux.Core
         private readonly TimeSpan? _maxFrameInterval;
 
         private IDXGIOutputDuplication? _duplication;
-        private ID3D11Device? _device;
+       private ID3D11Device? _device;
         private IDXGIOutput1? _output;
 
 
         // Assuming we use the primary output by default if nothing is specified
-        public CaptureEngine(uint adapterIndex = 0, uint outputIndex = 0, int maxFps = 0)
+        public CaptureEngine(ID3D11Device device, uint adapterIndex = 0, uint outputIndex = 0, int maxFps = 0)
         {
             _adapterIndex = adapterIndex;
             _outputIndex = outputIndex;
             _maxFrameInterval = maxFps > 0 ? TimeSpan.FromSeconds(1.0 / maxFps) : null;
+            _device = device ?? throw new ArgumentNullException(nameof(device));
+
+
         }
 
-        
+
         public async IAsyncEnumerable<Frame> StartCaptureAsync(
     SharedMemory? sharedMem = null,
     [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
@@ -72,13 +75,12 @@ namespace FrameFlux.Core
                     .StartAsync(async ctx =>
                     {
                         var sw = Stopwatch.StartNew();
-                        int lastFrames = 0, lastDropped = 0;
 
                         while (!token.IsCancellationRequested)
                         {
                             await Task.Delay(1000, token);
 
-                            // Capture locale pour éviter les races
+                            // Local capture, avoid races
                             int f = Volatile.Read(ref frames);
                             int df = Volatile.Read(ref droppedFrames);
 
@@ -87,7 +89,6 @@ namespace FrameFlux.Core
                             table.UpdateCell(4, 1, sharedMem?.FrameCount.ToString() ?? "N/A");
                             ctx.Refresh();
 
-                            // Optionnel : remise à zéro pour FPS instantané
                             Volatile.Write(ref frames, 0);
                             Volatile.Write(ref droppedFrames, 0);
                         }
@@ -141,7 +142,7 @@ namespace FrameFlux.Core
         }
 
 
-        // Initialize the D3D11 device and output duplication
+        // Initialize the output duplication
         private void InitDesktopDuplication()
         {
             using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
@@ -157,20 +158,15 @@ namespace FrameFlux.Core
             _output = output.QueryInterface<IDXGIOutput1>()
                       ?? throw new NotSupportedException("Output duplication not supported.");
 
-            result = D3D11.D3D11CreateDevice(
-                adapter,
-                DriverType.Unknown,
-                DeviceCreationFlags.None,
-                [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0],
-                out _device);
-
-            if (result.Failure || _device is null)
-                throw new InvalidOperationException($"D3D11CreateDevice failed (HRESULT {result.Code})");
+            // Now using global device provided by the helpers
+            if (_device is null)
+                throw new InvalidOperationException("Device not set before initializing duplication.");
 
             _duplication = _output.DuplicateOutput(_device);
             if (_duplication is null)
                 throw new InvalidOperationException("Failed to create output duplication.");
         }
+
 
 
         // Acquire the next frame from the duplication interface
@@ -200,7 +196,8 @@ namespace FrameFlux.Core
             {
                 _duplication?.Dispose();
                 _output?.Dispose();
-                _device?.Dispose();
+              //  _device?.Dispose();
+              // Device is now global, we don't own it so we don't dispose it
             }
             catch (Exception ex)
             {

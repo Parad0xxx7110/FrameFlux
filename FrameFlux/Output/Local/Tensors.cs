@@ -7,6 +7,7 @@
 
 
         // Convert byte array pixels to a NCHW tensor format ready for ONNX inference. 
+        // Depracated 
 
         public unsafe float[] ToTensors(byte[] pixels, int width, int height)
         {

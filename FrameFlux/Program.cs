@@ -1,9 +1,13 @@
 ﻿using FrameFlux.Core;
 using FrameFlux.Output.Memory;
+using FrameFlux.Helpers;
+using SharpGen.Runtime;
 using Spectre.Console;
+using System.Drawing.Text;
 
 class Program
 {
+
     static async Task Main()
     {
         const int MAX_WIDTH = 1920;
@@ -11,23 +15,28 @@ class Program
         const int BYTES_PER_PIXEL = 4;
         const int BUFFER_SIZE = MAX_WIDTH * MAX_HEIGHT * BYTES_PER_PIXEL;
 
-        await using var capturer = new CaptureEngine(adapterIndex: 0, outputIndex: 0, maxFps: 0);
+        D3DDevice D3DDevice = new(enableDebug:true);
+
+        var currentDevice = D3DDevice.Device;
+
+
+        
+        await using var capturer = new CaptureEngine(currentDevice, adapterIndex: 0, outputIndex: 0, maxFps: 0);
         using var sharedMem = new SharedMemory("FrameBuffer", "FrameReady", BUFFER_SIZE);
 
         var cts = new CancellationTokenSource();
 
-        // Consomme les frames et les pousse dans la shared memory
         var captureTask = Task.Run(async () =>
         {
             await foreach (var frame in capturer.StartCaptureAsync(sharedMem, cts.Token))
             {
-                var pixels = frame.FastGetFrameBytes();
-                if (pixels != null)
-                    sharedMem.WriteFrameData(pixels);
+                
+
+
+
             }
         });
 
-        // Arrêt avec Esc ou après 120 s
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(120));
