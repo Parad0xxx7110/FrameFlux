@@ -28,7 +28,7 @@
 
   <ItemGroup>
     <None Update="Shaders\Preprocess.hlsl">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

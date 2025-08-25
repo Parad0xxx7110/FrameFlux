@@ -39,5 +39,6 @@ void CSMain(uint3 DTid : SV_DispatchThreadID)
     float4 c1 = lerp(c01, c11, f.x);
     float4 c = lerp(c0, c1, f.y);
 
-    dstTex[int2(x, y)] = c; // RGBA float
+    // Swap R/B channels pour correspondre à RGBA CPU
+    dstTex[int2(x, y)] = float4(c.b, c.g, c.r, c.a);
 }
